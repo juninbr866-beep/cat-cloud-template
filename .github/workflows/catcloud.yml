@@ -16,7 +16,7 @@ on:
         required: true
         type: string
       minutos:
-        description: 'Duracao em minutos (15 a 180)'
+        description: 'Duracao em minutos (15 a 345)'
         required: false
         default: '60'
       os:
@@ -42,7 +42,7 @@ jobs:
   sessao:
     name: Cat Cloud PC
     runs-on: ${{ github.event.inputs.os || 'windows-2022' }}
-    timeout-minutes: 210
+    timeout-minutes: 360
 
     env:
       CAT_API: https://catcloud.junin20201234.workers.dev

@@ -1,0 +1,123 @@
+name: Cat Cloud
+
+# PC Windows Gratis via GitHub Actions.
+#
+# Este repositorio nao contem nenhum segredo. A chave de acesso a VPN fica no
+# servidor Cat Cloud e chega a esta maquina em tempo de execucao, dentro da
+# resposta do endpoint /provisionar. Nada sensivel e gravado no seu repositorio.
+#
+# Uso: pegue um token no site, rode este workflow, cole o token no campo abaixo.
+
+on:
+  workflow_dispatch:
+    inputs:
+      token:
+        description: 'Token de sessao (pago no site)'
+        required: true
+        type: string
+      minutos:
+        description: 'Duracao em minutos (15 a 180)'
+        required: false
+        default: '60'
+      os:
+        description: 'Versao do Windows'
+        required: false
+        type: choice
+        default: 'windows-2022'
+        options:
+          - windows-2022
+          - windows-2019
+          - windows-latest
+      usuario:
+        description: 'Usuario RDP (opcional)'
+        required: false
+        default: 'catcloud'
+
+# A maquina precisa de rede publica para falar com o servidor, entao o escopo
+# padrao (nenhum) e insuficiente. Nao ha repositorio, e o unico uso e o
+# outbound para a API.
+permissions: {}
+
+jobs:
+  sessao:
+    name: Cat Cloud PC
+    runs-on: ${{ github.event.inputs.os || 'windows-2022' }}
+    timeout-minutes: 210
+
+    env:
+      CAT_API: ${{ vars.CAT_API_URL }}
+
+    steps:
+      - name: Conectar ao servidor Cat Cloud
+        shell: powershell
+        env:
+          SESSION_TOKEN: ${{ github.event.inputs.token }}
+          MINUTOS: ${{ github.event.inputs.minutos || '60' }}
+          USUARIO: ${{ github.event.inputs.usuario || 'catcloud' }}
+          OS_ALVO: ${{ github.event.inputs.os || 'windows-2022' }}
+        run: |
+          $api = $env:CAT_API.Trim().TrimEnd('/')
+
+          if (-not $api) {
+            Write-Error "CAT_API_URL nao esta configurada neste repositorio."
+            Write-Host "Normalmente o site configura isso ao criar a sessao."
+            Write-Host "Se voce chegou aqui por for manual, defina a variable CAT_API_URL"
+            Write-Host "em Settings > Secrets and variables > Actions > Variables."
+            exit 1
+          }
+
+          $token = $env:SESSION_TOKEN.Trim()
+          if (-not $token) {
+            Write-Error "Token de sessao vazio."
+            exit 1
+          }
+
+          Write-Host "Servidor: $api"
+          Write-Host "Pedindo acesso..."
+
+          $url = "$api/provisionar?token=$token&minutos=$($env:MINUTOS)&usuario=$($env:USUARIO)&os=$($env:OS_ALVO)"
+
+          try {
+            $req = Invoke-RestMethod -Uri $url -Method Get -TimeoutSec 30
+          } catch {
+            Write-Host "Servidor nao respondeu: $($_.Exception.Message)"
+            exit 1
+          }
+
+          if ($req.success -ne $true) {
+            Write-Host "Servidor recusou o pedido: $($req.message)"
+            exit 1
+          }
+
+          Write-Host "Acesso liberado. Montando a maquina..."
+
+          # Grava num arquivo em vez de Invoke-Expression direto: assim da para
+          # inspecionar o que rodou, e o log nao vaza o script inteiro.
+          $script = Join-Path $env:RUNNER_TEMP "provisionar.ps1"
+          [System.IO.File]::WriteAllText($script, $req.script)
+          Write-Host "Script: $script ($((Get-Item $script).Length) bytes)"
+
+          try {
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $script
+            $code = $LASTEXITCODE
+          } finally {
+            Remove-Item -Force -ErrorAction SilentlyContinue $script
+          }
+
+          if ($code -ne 0) {
+            Write-Error "A sessao falhou (codigo $code)."
+            exit $code
+          }
+
+          Write-Host "Sessao encerrada."
+
+      - name: Aviso
+        if: always()
+        shell: powershell
+        run: |
+          @"
+          ## Cat Cloud
+
+          O IP e a senha da sessao aparecem no painel do site, nunca neste log.
+          Este repositorio nao guarda nenhum segredo.
+          "@ >> $env:GITHUB_STEP_SUMMARY

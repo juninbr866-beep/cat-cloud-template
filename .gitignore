@@ -1,0 +1,9 @@
+connection-info.txt
+*.log
+nohup.out
+.env
+.DS_Store
+node_modules/
+provisionar.ps1
+core/
+api/

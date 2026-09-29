@@ -80,7 +80,27 @@ jobs:
           try {
             $req = Invoke-RestMethod -Uri $url -Method Get -TimeoutSec 30
           } catch {
-            Write-Host "Servidor nao respondeu: $($_.Exception.Message)"
+            # Um 403/400 chega aqui como excecao e o corpo da resposta, que traz
+            # o motivo real ("token expirado", "assinatura invalida"), se perde.
+            # Sem isso o log so dizia "nao respondeu" e nao dava pra diagnosticar.
+            $motivo = $_.Exception.Message
+            try {
+                $resposta = $_.ErrorDetails.Message
+                if ($resposta) {
+                    $detalhe = $resposta | ConvertFrom-Json
+                    if ($detalhe.message) { $motivo = $detalhe.message }
+                }
+            } catch {}
+
+            Write-Host "Servidor recusou o pedido: $motivo"
+
+            if ($motivo -match "expirado") {
+                Write-Host "Seu token venceu. Peca um novo no site e rode de novo."
+            } elseif ($motivo -match "assinatura") {
+                Write-Host "Token invalido. Confira se colou o token inteiro, sem espaco."
+            } elseif ($motivo -match "cota") {
+                Write-Host "A cota diaria do Cat Cloud acabou. Tente amanha."
+            }
             exit 1
           }
 

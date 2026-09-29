@@ -45,7 +45,7 @@ jobs:
     timeout-minutes: 210
 
     env:
-      CAT_API: ${{ vars.CAT_API_URL }}
+      CAT_API: https://catcloud.junin20201234.workers.dev
 
     steps:
       - name: Conectar ao servidor Cat Cloud
